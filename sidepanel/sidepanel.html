@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bilibili At Guard</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <header class="head">
+    <div class="head-title">
+      <span class="logo">🛡</span>
+      <span class="name">Bilibili At Guard</span>
+      <button class="themebtn" id="theme-toggle" title="切换主题">☀️</button>
+      <label class="switch" title="总开关">
+        <input type="checkbox" id="toggle-enabled" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="identity" id="identity">账号信息加载中…</div>
+    <div class="statrow" id="statrow"></div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="pending">拦截</button>
+    <button class="tab" data-tab="history">历史</button>
+    <button class="tab" data-tab="settings">设置</button>
+  </nav>
+
+  <main id="main"></main>
+  <div id="toast"></div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

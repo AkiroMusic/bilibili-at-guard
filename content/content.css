@@ -1,0 +1,37 @@
+/* Bilibili At Guard — capture chip shown above the comment area. */
+.bag-chip {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+  padding: 6px 12px;
+  width: fit-content;
+  background: #fff0f4;
+  color: #fb7299;
+  border: 1px solid #ffd0de;
+  border-radius: 16px;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+}
+
+.bag-chip:hover {
+  background: #ffe3ec;
+}
+
+.bag-chip.bag-chip-on {
+  display: inline-flex;
+}
+
+/* bilibili dark theme pages: keep the chip readable without a light pill */
+@media (prefers-color-scheme: dark) {
+  .bag-chip {
+    background: rgba(251, 114, 153, 0.14);
+    border-color: rgba(251, 114, 153, 0.4);
+  }
+
+  .bag-chip:hover {
+    background: rgba(251, 114, 153, 0.24);
+  }
+}

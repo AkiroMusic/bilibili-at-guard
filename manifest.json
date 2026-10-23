@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Bilibili At Guard",
+  "version": "0.1.4",
+  "description": "Hide @-mention comments on bilibili video pages and manage them from a side panel: restore, whitelist, delete (as uploader) or block the sender.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "sidePanel", "cookies"],
+  "host_permissions": ["https://*.bilibili.com/*"],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "action": {
+    "default_title": "Bilibili At Guard",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.bilibili.com/video/*"],
+      "js": ["content/probe.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://www.bilibili.com/video/*"],
+      "js": ["content/content.js"],
+      "css": ["content/content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

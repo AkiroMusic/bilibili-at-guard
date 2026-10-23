@@ -1,0 +1,428 @@
+/* Bilibili At Guard — side panel styles. Dark is the default theme. */
+
+:root {
+  --pink: #fb7299;
+  --ok: #2ac864;
+  --warn: #ff7f24;
+}
+
+body[data-theme='light'] {
+  --bg: #ffffff;
+  --line: #e3e5e7;
+  --ink: #18191c;
+  --ink-2: #61666d;
+  --ink-3: #9499a0;
+  --soft: #fff0f4;
+  --soft-border: #ffd0de;
+  --btn-bg: #f6f7f8;
+  --input-bg: #ffffff;
+  --hover: #ffe3ec;
+  --slider-off: #ccc;
+}
+
+body[data-theme='dark'] {
+  --bg: #111214;
+  --line: #2e3238;
+  --ink: #e3e5e7;
+  --ink-2: #aeb4bb;
+  --ink-3: #78808a;
+  --soft: rgba(251, 114, 153, 0.14);
+  --soft-border: rgba(251, 114, 153, 0.4);
+  --btn-bg: #23262b;
+  --input-bg: #23262b;
+  --hover: rgba(251, 114, 153, 0.22);
+  --slider-off: #4a4f57;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.head {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.head-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo {
+  font-size: 16px;
+}
+
+.name {
+  font-weight: 600;
+  font-size: 14px;
+  flex: 1;
+}
+
+.themebtn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  line-height: 1;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+  flex: none;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: var(--slider-off);
+  border-radius: 18px;
+  transition: 0.15s;
+  cursor: pointer;
+}
+
+.slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  transition: 0.15s;
+}
+
+.switch input:checked + .slider {
+  background: var(--pink);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(16px);
+}
+
+.identity {
+  margin-top: 8px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.statrow {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  background: var(--soft);
+  color: var(--pink);
+  border: 1px solid var(--soft-border);
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 9px 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tab.active {
+  color: var(--pink);
+  border-bottom-color: var(--pink);
+  font-weight: 600;
+}
+
+main {
+  padding: 10px 14px 24px;
+}
+
+.group {
+  margin-bottom: 14px;
+}
+
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.group-title {
+  font-weight: 600;
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  font-size: 10px;
+  border-radius: 8px;
+  padding: 1px 7px;
+  flex: none;
+}
+
+.badge.mine {
+  background: var(--pink);
+  color: #fff;
+}
+
+.badge.other {
+  background: var(--btn-bg);
+  color: var(--ink-2);
+}
+
+.badge.deleted {
+  background: var(--btn-bg);
+  color: var(--ink-2);
+}
+
+.badge.blocked {
+  background: #3a3f46;
+  color: #fff;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--bg);
+}
+
+.card-top {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.uname {
+  font-weight: 600;
+  color: var(--ink);
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  color: var(--ink-3);
+  font-size: 11px;
+  flex: 1;
+}
+
+.card-text {
+  margin-top: 4px;
+  color: var(--ink-2);
+  line-height: 1.45;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.card-text.open {
+  display: block;
+}
+
+.mentions {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--warn);
+}
+
+.btnrow {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--btn-bg);
+  color: var(--ink-2);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--pink);
+  color: var(--pink);
+}
+
+.btn.primary {
+  background: var(--pink);
+  border-color: var(--pink);
+  color: #fff;
+}
+
+.btn.danger {
+  background: transparent;
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.btn.armed {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.empty {
+  color: var(--ink-3);
+  text-align: center;
+  padding: 32px 0;
+  line-height: 1.6;
+}
+
+.section {
+  margin-bottom: 18px;
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hint {
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.rule-row,
+.wl-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.rule-row select,
+.rule-row input,
+.testbox input {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--input-bg);
+}
+
+.rule-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.iconbtn {
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+
+.iconbtn:hover {
+  color: var(--pink);
+}
+
+.testbox {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.testbox input {
+  flex: 1;
+  min-width: 0;
+}
+
+.test-result {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+}
+
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  margin-top: 4px;
+}
+
+.diag {
+  background: var(--btn-bg);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  margin-top: 6px;
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  max-width: 88%;
+  display: none;
+  z-index: 9;
+}

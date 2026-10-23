@@ -12,12 +12,16 @@ A Chrome/Edge (Manifest V3) extension that auto-hides comments containing @-ment
 - **Diagnostics** — Settings → 诊断当前标签页 reports probe status, matched units, and any missing `rpid`/`mid` extractions, for quick issue reports.
 - **Legacy DOM fallback** — if bilibili's web-component comment area is absent, the classic `.reply-item` DOM is scanned as a fallback.
 
-## Install (unpacked)
+## Install
+
+**From the release zip (recommended):** download `bilibili-at-guard-v0.1.4.zip` from the [Releases](https://github.com/AkiroMusic/bilibili-at-guard/releases) page, unzip it, then:
 
 1. Chrome: `chrome://extensions` · Edge: `edge://extensions`
 2. Enable **Developer mode**
-3. **Load unpacked** → select this `bilibili-at-guard/` folder
+3. **Load unpacked** → select the unzipped `bilibili-at-guard-0.1.4/` folder
 4. Pin the extension; open any `bilibili.com/video/BV…` page
+
+**From this repository:** the same steps, selecting this repo folder directly.
 
 ## Usage
 
@@ -63,10 +67,65 @@ Detection of an @-mention: an anchor inside the comment body whose `href` points
 
 ## 中文说明
 
-Chrome/Edge (MV3) 扩展：自动隐藏 B站视频页所有含 @提及 的评论（针对 dsh-bili-scroll 这类「LLM 生成文案 + 定向@」的自动评论插件），并在侧边栏统一管理：恢复（本页会话）、白名单（永久）、删除（UP主视频，走 `x/v2/reply/del`）、拉黑（任意视频，走 `x/relation/modify` act=5）。
+Chrome/Edge (Manifest V3) 扩展：自动隐藏 B站视频页所有含 @提及 的评论（针对 [dsh-bili-scroll](https://github.com/c1overzz/dsh-bili-scroll) 这类「LLM 生成文案 + 定向@」自动评论插件生成的垃圾内容），并在侧边栏统一管理每条被隐藏的评论：恢复、白名单、删除（UP主身份）、拉黑。
 
-- 评论区顶部有计数 chip，点击打开侧边栏；删除/拉黑需二次确认 + 1.6s 限速，不做批量；拉黑可在「历史」页一键取消（act=6）
-- 删除/拉黑请求从视频页页面上下文发出（B站网关会以 HTTP 412 拒绝扩展来源的 POST），操作时需要有一个B站视频页处于打开状态；侧边栏默认暗色主题
-- 默认豁免自己发的含@评论；可叠加关键词/正则规则；设置页有「诊断当前标签页」
-- 安装：`chrome://extensions`（或 `edge://extensions`）→ 开发者模式 → 加载已解压的扩展程序 → 选本目录
-- 风险：删除/拉黑为非官方接口，可能随B站改版失效或触发风控；评论区 DOM 为 web components，改版后需修补适配层
+### 功能
+
+- **@提及过滤** — 任何含 @提及 的评论（根评论与楼中楼子回复均覆盖）就地隐藏：通过提及链接（`space.bilibili.com/<mid>`、文本以 @ 开头）识别，并以文本级 `@名字` 模式兜底（覆盖不暴露提及链接的渲染器版本）；评论区上方 chip 显示隐藏条数，点击打开侧边栏。关键词/正则规则仅作补充。
+- **暗色侧边栏**（`chrome.sidePanel`，Chrome/Edge 116+）— 默认暗色主题（页头 ☀️/🌙 切换）；面板重新聚焦或切回标签页时自动刷新，并通过 storage 事件实时更新。被隐藏评论按视频分组，支持恢复（本页会话）、白名单（永久）、删除、拉黑；已拉黑用户可在「历史」页取消拉黑（`x/relation/modify` act=6）。破坏性操作需二次点击确认，限速每次调用间隔 1.6s。
+- **UP主模式** — 自己的视频上提供**删除**（`x/v2/reply/del`，UP主权限由服务端校验）；他人视频上提供**拉黑**（`x/relation/modify`，act=5）。两种按钮在适用处均会显示。
+- **自定义规则**（可选）— 关键词（子串）与 JS 正则规则，附测试框。
+- **自我豁免** — 你自己发的含@评论不会被隐藏（设置页开关）。
+- **诊断** — 设置 → 诊断当前标签页，报告探针状态、识别到的评论单元数及 rpid/mid 缺失情况，便于反馈问题。
+- **旧版 DOM 兜底** — 若B站 web components 评论区缺失，回退扫描经典 `.reply-item` DOM。
+
+### 安装
+
+**从 release zip（推荐）：** 从 [Releases](https://github.com/AkiroMusic/bilibili-at-guard/releases) 页下载 `bilibili-at-guard-v0.1.4.zip` 并解压，然后：
+
+1. Chrome：`chrome://extensions` · Edge：`edge://extensions`
+2. 开启**开发者模式**
+3. **加载已解压的扩展程序** → 选择解压出的 `bilibili-at-guard-0.1.4/` 文件夹
+4. 固定扩展；打开任意 `bilibili.com/video/BV…` 页面
+
+**从仓库目录：** 同样步骤，直接选择本仓库文件夹。
+
+### 使用
+
+1. 内容脚本每 2 秒（及 DOM 变化时）穿透 open shadow roots 扫描评论区。
+2. 被隐藏评论折叠；评论区上方出现 chip（`🛡 At Guard · 已隐藏 N 条评论（含@） · 点击管理`）。
+3. 点击 chip（或工具栏图标）打开侧边栏。
+4. 每条评论：**恢复**对本页会话生效；**白名单**该用户评论永不隐藏；**删除**（自己的视频）/ **拉黑**（任意视频）通过B站 web API 操作，需确认步骤。
+
+### 工作原理
+
+```
+content/probe.js      （MAIN world） 读取渲染器 JS 属性（rpid/mid/message）与
+                                    __INITIAL_STATE__（aid/owner/cookie mid），
+                                    以 postMessage 应答请求
+content/content.js    （isolated）   shadow DOM 扫描、隐藏/恢复、chip、storage 同步，
+                                    探针失效时的 DOM 属性兜底
+background/service-worker.js        bilibili GET API（nav/view）、bili_jct cookie 读取、
+                                    sidePanel.open
+sidepanel/                           管理界面、规则、白名单、诊断
+```
+
+@提及判定：评论体内 `href` 指向 `space.bilibili.com/<mid>` 且文本以 @ 开头的链接，**或**评论文本中的 `@名字` 模式（覆盖不暴露提及链接的渲染器版本；误伤时可通过 恢复/白名单 找回）。评论单元通用匹配：任意 `BILI-COMMENT*` 自定义元素（排除回复容器、操作按钮、用户信息等辅助组件），外加经典 `.reply-item` DOM。根评论隐藏整张 thread 卡片；子回复仅隐藏渲染器自身。
+
+### 权限与隐私
+
+- `storage` — 记录与设置保存在 `chrome.storage.local`；除下列B站 API 调用外，任何数据不离开本机。
+- `cookies` + `https://*.bilibili.com/*` — 读取 `bili_jct`（csrf），并为 `api.bilibili.com` 调用附带登录 Cookie：`x/web-interface/nav`（登录身份）、`x/web-interface/view`（视频 UP主/aid）、`x/v2/reply/del`、`x/relation/modify`。无其他主机、无统计埋点。
+- 写操作（`reply/del`、`relation/modify`）刻意**从内容脚本**（页面上下文）发出：B站网关会以 HTTP 412 拒绝扩展来源的 POST（缺少页面 Referer/Origin）。因此操作时需要有一个B站视频页处于打开状态；无可用页面时面板会提示。
+
+### 限制与风险
+
+- **非官方接口。** `reply/del` 与 `relation/modify` 为B站网页端端点，无公开契约，可能变更或触发风控。所有操作均为单次、需确认、有限速——绝不批量自动化。
+- **DOM 变动。** B站评论区为 web components 且可能随时改版。探针先读渲染器属性，再回退属性/链接解析。若提取失败，评论仍会隐藏，但删除/拉黑可能不可用——请运行诊断并反馈输出。
+- 删除/拉黑**需登录**；隐藏功能未登录也可用。
+- **恢复仅本页会话有效**：刷新后匹配评论会再次隐藏（设计如此；永久例外请用白名单）。
+
+### 开发
+
+- `python tools/gen_icons_from_image.py` 由 `assets/icon-source.png` 重新生成 `icons/*.png`（有 PIL 时用 LANCZOS，否则纯标准库 PNG 解码 + box 滤镜）。
+- 无构建步骤；纯 ES2020 兼容 JS。

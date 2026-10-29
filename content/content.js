@@ -10,7 +10,7 @@
   const CLASSIC_SEL = '.reply-item';
   const SPACE_RE = /space\.bilibili\.com\/(\d+)/;
   const BV_RE = /\/video\/(BV[0-9A-Za-z]+)/;
-  const AT_TEXT_RE = /@\u200b?[\w\u4e00-\u9fa5]/;
+  const AT_TEXT_RE = /[@＠]\u200b?[\w\u4e00-\u9fa5]/;
   // Aux renderer tags that must never be treated as comment units, so unknown
   // future renderer names can be matched generically by prefix.
   const UNIT_TAG_DENY = /(-REPLIES-|-BOX-|-USER-INFO|-ACTION-|-RICH-TEXT|-SORT|-HEADER|-COUNT|-PAGER)/;
@@ -20,7 +20,7 @@
   const MAX_RECORDS = 3000;
 
   const DEFAULT_SETTINGS = { enabled: true, exemptSelf: true };
-  const DEFAULT_STATS = { captured: 0, deleted: 0, blocked: 0 };
+  const DEFAULT_STATS = { captured: 0, deleted: 0, blocked: 0, reported: 0 };
 
   const state = {
     settings: { ...DEFAULT_SETTINGS },
@@ -30,7 +30,6 @@
     stats: { ...DEFAULT_STATS },
     itemsByUid: new Map(),
     units: new Map(),
-    processed: new WeakSet(),
     sessionRestored: new Set(),
     hiddenIds: new Set(),
     page: null,
@@ -178,8 +177,8 @@
 
   // ---------- detection ----------
 
-  function matchRules(text) {
-    if (!text) return false;
+  function matchRules(item) {
+    const text = item.message || '';
     for (const rule of state.rules) {
       if (!rule || rule.on === false || !rule.value) continue;
       if (rule.type === 're') {
@@ -188,6 +187,8 @@
         } catch {
           // invalid user regex is skipped, never thrown
         }
+      } else if (rule.type === 'uid') {
+        if (item.mid && rule.value.split(/\D+/).includes(item.mid)) return true;
       } else if (text.includes(rule.value)) {
         return true;
       }
@@ -207,21 +208,23 @@
   }
 
   function localExtract(unit) {
-    const anchors = [...deepCollect(unit, 'a', new Set(), 0)];
-    const mentions = [];
-    let mid = '';
-    let uname = '';
-    for (const a of anchors) {
+    const anchors = [];
+    for (const a of deepCollect(unit, 'a', new Set(), 0)) {
       const m = String(a.getAttribute('href') || a.href || '').match(SPACE_RE);
       if (!m) continue;
       const text = (a.textContent || '').trim();
-      if (text.startsWith('@')) {
-        mentions.push({ mid: m[1], name: text.replace(/^@+/, '').slice(0, 40) });
-      } else if (!mid) {
-        mid = m[1];
-        uname = text.slice(0, 40);
-      }
+      anchors.push({ mid: m[1], isMention: text.startsWith('@'), name: text.replace(/^@+/, '').slice(0, 40) });
     }
+    const author = anchors.find((a) => !a.isMention);
+    const mid = author ? author.mid : '';
+    const uname = author ? author.name : '';
+    // Renderer variants may drop the @ glyph (e.g. the 回复 @xx prefix in
+    // sub-replies), so any space link to a user other than the comment's
+    // author counts as a mention too.
+    const mentions = anchors
+      .filter((a) => a.isMention || (mid && a.mid !== mid))
+      .map((a) => ({ mid: a.mid, name: a.name }))
+      .slice(0, 5);
     return {
       uid: unit.getAttribute('data-bag-uid'),
       rpid: unit.getAttribute('data-id') || '',
@@ -229,6 +232,7 @@
       uname,
       message: (unit.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 400),
       mentions,
+      isReply: inRepliesContainer(unit),
     };
   }
 
@@ -237,8 +241,11 @@
     if (state.sessionRestored.has(id)) return false;
     if (item.mid && state.whitelist.includes(item.mid)) return false;
     if (state.settings.exemptSelf && item.mid && item.mid === ((state.page && state.page.myMid) || '')) return false;
-    if ((item.mentions && item.mentions.length > 0) || AT_TEXT_RE.test(item.message || '')) return true;
-    return matchRules(item.message || '');
+    // Sub-replies (楼中楼) are exempt from the @-mention filter: their 回复 @xx
+    // prefix and manual @s are normal conversation, not the spam pattern the
+    // filter targets. Explicit keyword/regex/UID rules still apply to them.
+    if (!item.isReply && ((item.mentions && item.mentions.length > 0) || AT_TEXT_RE.test(item.message || ''))) return true;
+    return matchRules(item);
   }
 
   // ---------- hide / unhide ----------
@@ -272,6 +279,24 @@
     return unit;
   }
 
+  // Sub-replies carry the component-generated 回复 @xx prefix; the @-mention
+  // filter must never fire on them. A unit is a reply when it sits inside a
+  // replies container in the shadow tree, or is nested in another classic item.
+  function inRepliesContainer(unit) {
+    const classic = unit.closest ? unit.closest('.reply-item') : null;
+    if (classic && classic !== unit) return true;
+    let node = unit;
+    for (let i = 0; i < 8; i++) {
+      const root = node.getRootNode ? node.getRootNode() : null;
+      if (!root || !(root instanceof ShadowRoot)) return false;
+      const host = root.host;
+      if (!host) return false;
+      if (/BILI-COMMENT-REPLIES/.test(host.tagName || '')) return true;
+      node = host;
+    }
+    return false;
+  }
+
   // ---------- scan ----------
 
   function isUnitEl(el) {
@@ -283,8 +308,8 @@
 
   function collectUnitEls() {
     const all = new Set();
-    const host = document.querySelector(HOST_SEL);
-    deepCollect(host ? host.shadowRoot || host : document, '*', all, 0);
+    const root = document.querySelector('#commentapp') || document.querySelector(HOST_SEL) || document;
+    deepCollect(root.shadowRoot || root, '*', all, 0);
     for (const el of document.querySelectorAll(CLASSIC_SEL)) all.add(el);
     return [...all].filter(isUnitEl);
   }
@@ -305,9 +330,17 @@
         for (const item of collected.items) state.itemsByUid.set(item.uid, item);
       }
       for (const el of collectUnitEls()) {
-        if (state.processed.has(el)) continue;
-        state.processed.add(el);
-        state.units.set(ensureUid(el), { unit: el, hideTarget: findHideTarget(el) });
+        const uid = ensureUid(el);
+        const entry = state.units.get(uid);
+        if (entry) {
+          // Bilibili detaches and reattaches comment subtrees (expand/collapse,
+          // list reconciliation). Registration is keyed on the persistent
+          // data-bag-uid attribute, so a reattached unit is picked up again;
+          // refresh a hide target left dangling by that detach window.
+          if (!entry.hideTarget.isConnected) entry.hideTarget = findHideTarget(el);
+        } else {
+          state.units.set(uid, { unit: el, hideTarget: findHideTarget(el) });
+        }
       }
       reevaluate();
     } finally {
@@ -329,6 +362,7 @@
       if (!item || !item.rpid || !item.mid) {
         const probed = item;
         item = localExtract(entry.unit);
+        item.isReply = !!(probed && probed.isReply) || !!item.isReply;
         if (probed) {
           item.rpid = item.rpid || probed.rpid || '';
           item.mid = item.mid || probed.mid || '';
@@ -393,7 +427,6 @@
     state.url = location.href;
     for (const [, entry] of state.units) unhideEl(entry.hideTarget);
     state.units.clear();
-    state.processed = new WeakSet();
     state.itemsByUid.clear();
     state.sessionRestored.clear();
     state.hiddenIds.clear();
@@ -510,19 +543,24 @@
   async function handleApiCall(call, params) {
     const csrf = await getCsrf();
     if (!csrf) return { code: -101, message: '未登录（未读取到 bili_jct），请先登录 bilibili' };
-    const isDel = call === 'del';
-    const body = isDel
-      ? { oid: String(params.oid), type: '1', rpid: String(params.rpid), csrf }
-      : { fid: String(params.mid), act: call === 'unblock' ? '6' : '5', csrf };
-    const res = await fetch(
-      isDel ? 'https://api.bilibili.com/x/v2/reply/del' : 'https://api.bilibili.com/x/relation/modify',
-      {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams(body).toString(),
-      },
-    );
+    let url;
+    let body;
+    if (call === 'del') {
+      url = 'https://api.bilibili.com/x/v2/reply/del';
+      body = { oid: String(params.oid), type: '1', rpid: String(params.rpid), csrf };
+    } else if (call === 'report') {
+      url = 'https://api.bilibili.com/x/v2/reply/report';
+      body = { oid: String(params.oid), type: '1', rpid: String(params.rpid), reason: String(params.reason || '1'), csrf }; // reason from panel: 1 垃圾广告 / 3 刷屏 / 8 内容不相关
+    } else {
+      url = 'https://api.bilibili.com/x/relation/modify';
+      body = { fid: String(params.mid), act: call === 'unblock' ? '6' : '5', csrf };
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(body).toString(),
+    });
     const data = await res.json().catch(() => null);
     return data || { code: -1, message: `HTTP ${res.status}` };
   }
@@ -543,7 +581,6 @@
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') scan();
     });
-    chrome.storage.onChanged.addListener(onStorageChanged);
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => onRuntimeMessage(msg, sender, sendResponse));
   }
 
@@ -562,5 +599,8 @@
     startWatchers();
   }
 
+  // Registered before init() reads storage so a concurrent write (e.g. the
+  // service worker's startup cleanup) still reaches this script's state.
+  chrome.storage.onChanged.addListener(onStorageChanged);
   init();
 })();

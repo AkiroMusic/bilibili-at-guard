@@ -8,17 +8,20 @@
 
   const $ = (sel) => document.querySelector(sel);
 
+  const REPORT_REASONS = { '1': '垃圾广告', '3': '刷屏', '8': '内容不相关' };
+
   const state = {
-    settings: { enabled: true, exemptSelf: true, theme: 'dark' },
+    settings: { enabled: true, exemptSelf: true, theme: 'dark', reportReason: '1' },
     rules: [],
     whitelist: [],
     records: {},
-    stats: { captured: 0, deleted: 0, blocked: 0 },
+    stats: { captured: 0, deleted: 0, blocked: 0, reported: 0 },
     videoInfos: {},
     myInfo: null,
     tab: 'pending',
     diag: '',
     testResult: '',
+    exportText: '',
   };
 
   const esc = (s) =>
@@ -53,7 +56,7 @@
 
   async function loadAll() {
     const stored = await chrome.storage.local.get(['settings', 'rules', 'whitelist', 'records', 'stats', 'videoInfos']);
-    state.settings = { enabled: true, exemptSelf: true, theme: 'dark', ...(stored.settings || {}) };
+    state.settings = { enabled: true, exemptSelf: true, theme: 'dark', reportReason: '1', ...(stored.settings || {}) };
     state.rules = stored.rules || [];
     state.whitelist = stored.whitelist || [];
     state.records = stored.records || {};
@@ -82,7 +85,8 @@
     $('#statrow').innerHTML =
       `<span class="stat">累计拦截 ${state.stats.captured || 0}</span>` +
       `<span class="stat">已删除 ${state.stats.deleted || 0}</span>` +
-      `<span class="stat">已拉黑 ${state.stats.blocked || 0}</span>`;
+      `<span class="stat">已拉黑 ${state.stats.blocked || 0}</span>` +
+      `<span class="stat">已举报 ${state.stats.reported || 0}</span>`;
     $('#main').innerHTML =
       state.tab === 'pending' ? renderPending() : state.tab === 'history' ? renderHistory() : renderSettings();
   }
@@ -105,8 +109,10 @@
       <div class="btnrow">
         <button class="btn" data-action="restore">恢复</button>
         <button class="btn" data-action="wl" ${rec.mid ? '' : 'disabled'} title="该用户评论永不隐藏">白名单</button>
+        <button class="btn ${rec.marked ? 'primary' : ''}" data-action="mark" title="标记为垃圾评论，供导出 UID 后做成 UID 屏蔽规则">${rec.marked ? '已标垃圾' : '标垃圾'}</button>
         ${mine ? `<button class="btn primary" data-action="del" ${rec.rpid ? '' : 'disabled'} title="${rec.rpid ? '删除该评论（UP主权限）' : '未提取到 rpid，无法删除'}">删除</button>` : ''}
         <button class="btn danger" data-action="blk" ${rec.mid ? '' : 'disabled'} title="${rec.mid ? '拉黑该用户' : '未提取到用户 mid，无法拉黑'}">拉黑</button>
+        <button class="btn" data-action="report" ${rec.rpid && !rec.reported ? '' : 'disabled'} title="${rec.reported ? '该评论已举报过' : `向B站举报该评论（理由：${REPORT_REASONS[state.settings.reportReason] || '垃圾广告'}，可在设置中修改）`}">${rec.reported ? '已举报' : '举报'}</button>
       </div>
     </div>`;
   }
@@ -164,10 +170,11 @@
   function ruleRow(rule, idx) {
     return `<div class="rule-row" data-idx="${idx}">
       <select data-field="type">
-        <option value="kw" ${rule.type !== 're' ? 'selected' : ''}>关键词</option>
+        <option value="kw" ${rule.type !== 're' && rule.type !== 'uid' ? 'selected' : ''}>关键词</option>
         <option value="re" ${rule.type === 're' ? 'selected' : ''}>正则</option>
+        <option value="uid" ${rule.type === 'uid' ? 'selected' : ''}>UID</option>
       </select>
-      <input data-field="value" value="${esc(rule.value)}" placeholder="${rule.type === 're' ? 'JS 正则，如 /代购|刷单/' : '子串，如 加微信'}"/>
+      <input data-field="value" value="${esc(rule.value)}" placeholder="${rule.type === 're' ? 'JS 正则，如 /代购|刷单/' : rule.type === 'uid' ? '用户 mid 列表，逗号/空格分隔，可粘贴导出的 UID' : '子串，如 加微信'}"/>
       <input type="checkbox" data-field="on" ${rule.on !== false ? 'checked' : ''} title="启用"/>
       <button class="iconbtn" data-action="rulex" data-idx="${idx}" title="删除规则">✕</button>
     </div>`;
@@ -194,6 +201,11 @@
     <div class="section">
       <div class="section-title">行为</div>
       <label class="checkline"><input type="checkbox" id="exempt-self" ${state.settings.exemptSelf ? 'checked' : ''}/> 豁免我自己发出的含@评论</label>
+      <label class="checkline">举报理由
+        <select id="report-reason">
+          ${Object.entries(REPORT_REASONS).map(([v, label]) => `<option value="${v}" ${state.settings.reportReason === v ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </label>
     </div>
     <div class="section">
       <div class="section-title">诊断</div>
@@ -203,12 +215,14 @@
     <div class="section">
       <div class="section-title">数据</div>
       <div class="btnrow">
+        <button class="btn" data-action="exportuid">导出垃圾 UID</button>
         <button class="btn" data-action="cleanhist">清理已处理记录</button>
         <button class="btn" data-action="wipeall">清空全部记录</button>
       </div>
+      ${state.exportText ? `<textarea id="export-out" class="diag" rows="4" readonly spellcheck="false">${esc(state.exportText)}</textarea>` : ''}
     </div>
     <div class="section hint">
-      删除走 UP主 权限（x/v2/reply/del），拉黑走关系接口（x/relation/modify，act=5）。均为 bilibili 网页端非官方接口，需登录态；每次操作间隔 1.6s 并需二次确认。若失败请把提示原样反馈。
+      删除走 UP主 权限（x/v2/reply/del），拉黑走关系接口（x/relation/modify，act=5），举报走 x/v2/reply/report（理由可选：垃圾广告/刷屏/内容不相关，设置中修改）。均为 bilibili 网页端非官方接口，需登录态；每次操作间隔 1.6s 并需二次确认。若失败请把提示原样反馈。
     </div>`;
   }
 
@@ -344,6 +358,56 @@
     }
   }
 
+  async function reportComment(rec) {
+    const oid = await ensureOid(rec);
+    if (!oid || !rec.rpid) {
+      toast('缺少 oid/rpid，无法举报（设置→诊断 可查看提取情况）');
+      return;
+    }
+    await writeThrottle();
+    const reason = state.settings.reportReason || '1';
+    const res = await sendToContent('BAG_API', { call: 'report', params: { oid, rpid: rec.rpid, reason } });
+    if (!res) {
+      toast('未找到打开的B站视频页，无法发起请求（请打开任意B站视频页后重试）', 5000);
+      return;
+    }
+    if (res.code === 0) {
+      rec.reported = true;
+      state.stats.reported = (state.stats.reported || 0) + 1;
+      await persist(['records', 'stats']);
+      render();
+      toast(`已举报该评论（${REPORT_REASONS[reason] || '垃圾广告'}）`);
+    } else if (res.code === 12008) {
+      rec.reported = true;
+      await persist(['records']);
+      render();
+      toast('该评论之前已被举报过');
+    } else {
+      toast(`举报失败: ${res.message || '未知错误'}`, 5000);
+    }
+  }
+
+  async function exportUids() {
+    const mids = [...new Set(Object.values(state.records).filter((r) => r.marked && r.mid).map((r) => r.mid))];
+    if (!mids.length) {
+      toast('还没有标注垃圾评论：先在卡片上点「标垃圾」，再回到这里导出');
+      return;
+    }
+    state.exportText = mids.join('\n');
+    render();
+    const out = $('#export-out');
+    if (out) {
+      out.focus();
+      out.select();
+    }
+    try {
+      await navigator.clipboard.writeText(state.exportText);
+      toast(`已复制 ${mids.length} 个 UID，可粘贴到拦截规则的 UID 类型`);
+    } catch {
+      toast(`共 ${mids.length} 个 UID，下方文本框已全选，请手动复制`);
+    }
+  }
+
   async function restoreSession(rec) {
     const res = await sendToContent('BAG_RESTORE', { id: rec.id, bvid: rec.bvid });
     toast(
@@ -380,7 +444,7 @@
   function testRules() {
     const text = $('#ruletest').value;
     const hits = [];
-    if (/@\u200b?[\w\u4e00-\u9fa5]/.test(text)) hits.push('含@（默认规则）');
+    if (/[@＠]\u200b?[\w\u4e00-\u9fa5]/.test(text)) hits.push('含@（默认规则）');
     for (let i = 0; i < state.rules.length; i++) {
       const rule = state.rules[i];
       if (rule.on === false || !rule.value) continue;
@@ -439,6 +503,11 @@
         persist(['settings']);
         return;
       }
+      if (el.id === 'report-reason') {
+        state.settings.reportReason = el.value;
+        persist(['settings']);
+        return;
+      }
       const row = el.closest('.rule-row');
       if (!row) return;
       const rule = state.rules[Number(row.dataset.idx)];
@@ -483,6 +552,10 @@
       runDiag();
       return;
     }
+    if (action === 'exportuid') {
+      exportUids();
+      return;
+    }
     if (action === 'cleanhist') {
       armConfirm(btn, '清理已处理记录', async () => {
         for (const rec of Object.values(state.records)) {
@@ -507,9 +580,15 @@
     if (!rec) return;
     if (action === 'restore') restoreSession(rec);
     else if (action === 'wl') addWhitelist(rec);
+    else if (action === 'mark') {
+      rec.marked = !rec.marked;
+      persist(['records']);
+      render();
+    }
     else if (action === 'del') armConfirm(btn, '删除', () => deleteComment(rec));
     else if (action === 'blk') armConfirm(btn, '拉黑', () => blockUser(rec));
     else if (action === 'unblk') armConfirm(btn, '取消拉黑', () => unblockUser(rec));
+    else if (action === 'report') armConfirm(btn, '举报', () => reportComment(rec));
   }
 
   async function init() {

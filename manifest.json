@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Bilibili At Guard",
-  "version": "0.1.4",
-  "description": "Hide @-mention comments on bilibili video pages and manage them from a side panel: restore, whitelist, delete (as uploader) or block the sender.",
+  "version": "0.1.7",
+  "description": "Hide @-mention comments on bilibili video pages and manage them from a side panel: restore, whitelist, delete (as uploader), block or report the sender.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "sidePanel", "cookies"],
   "host_permissions": ["https://*.bilibili.com/*"],

@@ -62,6 +62,22 @@
     return out;
   }
 
+  // Sub-replies carry the component-generated 回复 @xx prefix; the @-mention
+  // filter must never fire on them. A unit is a reply when its data says
+  // root != 0, or when it sits inside a replies container in the shadow tree.
+  function inRepliesContainer(unit) {
+    let node = unit;
+    for (let i = 0; i < 8; i++) {
+      const root = node.getRootNode ? node.getRootNode() : null;
+      if (!root || !(root instanceof ShadowRoot)) return false;
+      const host = root.host;
+      if (!host) return false;
+      if (/BILI-COMMENT-REPLIES/.test(host.tagName || '')) return true;
+      node = host;
+    }
+    return false;
+  }
+
   // Incomplete items are not cached: component data may arrive after first paint.
   function extract(unit) {
     const cached = extracted.get(unit);
@@ -93,6 +109,18 @@
         uname = uname || author.name;
       }
     }
+    // Renderer variants may drop the @ glyph (e.g. the 回复 @xx prefix in
+    // sub-replies), so any space link to a user other than the comment's
+    // author counts as a mention too.
+    const mentions = anchors
+      .filter((a) => a.isMention || (mid && a.mid !== mid))
+      .map((a) => ({ mid: a.mid, name: a.name }));
+    let dataReply = false;
+    try {
+      if (d && d.root != null && Number(d.root) !== 0) dataReply = true;
+    } catch {
+      // ignore
+    }
     let message = '';
     try {
       if (d && d.content && typeof d.content.message === 'string') message = d.content.message;
@@ -106,7 +134,8 @@
       mid,
       uname,
       message,
-      mentions: anchors.filter((a) => a.isMention).map((a) => ({ mid: a.mid, name: a.name })),
+      mentions,
+      isReply: dataReply || inRepliesContainer(unit),
     };
     if (item.rpid && item.mid) extracted.set(unit, item);
     return item;
@@ -134,8 +163,8 @@
       return;
     }
     if (msg.type === 'BAG_COLLECT') {
-      const host = document.querySelector('bili-comments');
-      const root = (host && host.shadowRoot) || host || document;
+      const base = document.querySelector('#commentapp') || document.querySelector('bili-comments') || document;
+      const root = base.shadowRoot || base;
       const all = deepCollect(root, '*', new Set(), 0);
       for (const el of document.querySelectorAll('.reply-item')) all.add(el);
       const items = [...all].filter(isUnitEl).map(extract);

@@ -348,6 +348,7 @@ main {
 }
 
 .rule-row select,
+.checkline select,
 .rule-row input,
 .testbox input {
   border: 1px solid var(--line);

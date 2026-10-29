@@ -4,21 +4,23 @@ A Chrome/Edge (Manifest V3) extension that auto-hides comments containing @-ment
 
 ## Features
 
-- **@-mention filter** — any comment (root or sub-reply) containing an @-mention is hidden in place: detected via mention links (`space.bilibili.com/<mid>` anchors whose text starts with `@`) with a text-level `@name` fallback for renderer versions that don't expose mention links; a chip above the comment area shows the hidden count. Click it to open the side panel. Keyword/regex rules are supplementary.
-- **Dark-mode side panel** (`chrome.sidePanel`, Chrome/Edge 116+) — dark theme by default (toggle ☀️/🌙 in the header); the panel reloads itself when refocused or when tab switches back, and live-updates via storage events. Hidden comments are grouped by video, with restore (page-session), whitelist (permanent), delete, and block actions; blocked users can be unblocked from the History tab (`x/relation/modify` `act=6`). Destructive actions require an explicit second click (confirm state) and are rate-limited to one call per 1.6 s.
+- **@-mention filter** — any **root comment** containing an @-mention is hidden in place: detected via mention links (`space.bilibili.com/<mid>` anchors whose text starts with `@`) with a text-level `@name` fallback for renderer versions that don't expose mention links; a chip above the comment area shows the hidden count. Click it to open the side panel. Sub-replies (楼中楼) are exempt — the automatic 回复 @xx prefix and manual @s inside replies are normal conversation, so replies are never hidden by the @-filter (keyword/regex/UID rules still apply to them).
+- **Dark-mode side panel** (`chrome.sidePanel`, Chrome/Edge 116+) — dark theme by default (toggle ☀️/🌙 in the header); the panel reloads itself when refocused or when tab switches back, and live-updates via storage events. Hidden comments are grouped by video, with restore (page-session), whitelist (permanent), delete, block, and report actions; blocked users can be unblocked from the History tab (`x/relation/modify` `act=6`). Pending capture records live only for the current browser run — they are cleared automatically on every browser start, while deleted/blocked history is kept. Destructive actions require an explicit second click (confirm state) and are rate-limited to one call per 1.6 s.
 - **Uploader mode** — on your own videos the panel offers **Delete** (bilibili `x/v2/reply/del`, uploader permission verified server-side); on other people's videos it offers **Block** (`x/relation/modify`, `act=5`). Both buttons are always shown where applicable.
-- **Custom rules** (optional) — keyword (substring) and JS regex rules, with a test box.
+- **One-click report** — send a captured comment to bilibili (`x/v2/reply/report`); the reason is selectable in Settings (垃圾广告 / 刷屏 / 内容不相关, default 垃圾广告); already-reported comments are marked and can't be re-reported.
+- **Mark as spam & UID export** — flag comments with 标垃圾, then export the flagged commenters' mids in one click (Settings → 导出垃圾 UID) and reuse them as a UID rule to hide those users' comments everywhere.
+- **Custom rules** (optional) — keyword (substring), JS regex, and UID (mid list) rules, with a test box.
 - **Self exemption** — your own @-mention comments are never hidden (toggle in Settings).
 - **Diagnostics** — Settings → 诊断当前标签页 reports probe status, matched units, and any missing `rpid`/`mid` extractions, for quick issue reports.
 - **Legacy DOM fallback** — if bilibili's web-component comment area is absent, the classic `.reply-item` DOM is scanned as a fallback.
 
 ## Install
 
-**From the release zip (recommended):** download `bilibili-at-guard-v0.1.4.zip` from the [Releases](https://github.com/AkiroMusic/bilibili-at-guard/releases) page, unzip it, then:
+**From the release zip (recommended):** download `bilibili-at-guard-v0.1.7.zip` from the [Releases](https://github.com/AkiroMusic/bilibili-at-guard/releases) page, unzip it, then:
 
 1. Chrome: `chrome://extensions` · Edge: `edge://extensions`
 2. Enable **Developer mode**
-3. **Load unpacked** → select the unzipped `bilibili-at-guard-0.1.4/` folder
+3. **Load unpacked** → select the unzipped `bilibili-at-guard-0.1.7/` folder
 4. Pin the extension; open any `bilibili.com/video/BV…` page
 
 **From this repository:** the same steps, selecting this repo folder directly.
@@ -28,7 +30,7 @@ A Chrome/Edge (Manifest V3) extension that auto-hides comments containing @-ment
 1. The content script scans the comment area (through open shadow roots) every 2 s and on DOM changes.
 2. Hidden comments collapse; the chip (`🛡 At Guard · 已隐藏 N 条评论（含@） · 点击管理`) appears above the comment list.
 3. Click the chip (or the toolbar icon) to open the side panel.
-4. Per comment: **恢复** restores it for the current page session; **白名单** never hides that user again; **删除** (own videos) / **拉黑** (always available) act through bilibili's web APIs with a confirm step.
+4. Per comment: **恢复** restores it for the current page session; **白名单** never hides that user again; **标垃圾** flags it for UID export; **删除** (own videos) / **拉黑** / **举报** act through bilibili's web APIs with a confirm step.
 
 ## How it works
 
@@ -43,19 +45,19 @@ background/service-worker.js        bilibili GET APIs (nav/view), bili_jct cooki
 sidepanel/                           management UI, rules, whitelist, diagnostics
 ```
 
-Detection of an @-mention: an anchor inside the comment body whose `href` points to `space.bilibili.com/<mid>` and whose text starts with `@`, **or** a text-level `@name` pattern in the comment body (covers renderer versions that don't expose mention links; recoverable via 恢复/白名单 if it ever over-matches). Comment units are matched generically: any `BILI-COMMENT*` custom element minus aux components (replies container, action buttons, user info, …), plus the legacy `.reply-item` DOM. Root comments hide the whole thread card; sub-replies hide only the renderer.
+Detection of an @-mention (root comments only — sub-replies are always exempt): an anchor inside the comment body whose `href` points to `space.bilibili.com/<mid>` — either its text starts with `@`, or it links to a user other than the comment's author (renderer variants may drop the `@` glyph) — **or** a text-level `@name` pattern in the comment body (covers renderer versions that don't expose mention links; recoverable via 恢复/白名单 if it ever over-matches). Replies are recognized via reply data (`root != 0`), a replies-container ancestor, or classic-DOM nesting. Comment units are matched generically: any `BILI-COMMENT*` custom element minus aux components (replies container, action buttons, user info, …), plus the legacy `.reply-item` DOM. Root comments hide the whole thread card; sub-replies hide only the renderer.
 
 ## Permissions & privacy
 
 - `storage` — records and settings stay in `chrome.storage.local`; nothing leaves the machine except the bilibili API calls listed below.
-- `cookies` + `https://*.bilibili.com/*` — reads `bili_jct` (csrf) and attaches your login cookies to `api.bilibili.com` calls: `x/web-interface/nav` (login identity), `x/web-interface/view` (video owner/aid), `x/v2/reply/del`, `x/relation/modify`. No other hosts, no analytics.
-- Write calls (`reply/del`, `relation/modify`) are sent **from the content script** (page context) on purpose: bilibili's gateway rejects extension-origin POSTs with HTTP 412 because they lack the page Referer/Origin. They therefore require a bilibili video tab to be open; the panel tells you when none is available.
+- `cookies` + `https://*.bilibili.com/*` — reads `bili_jct` (csrf) and attaches your login cookies to `api.bilibili.com` calls: `x/web-interface/nav` (login identity), `x/web-interface/view` (video owner/aid), `x/v2/reply/del`, `x/v2/reply/report`, `x/relation/modify`. No other hosts, no analytics.
+- Write calls (`reply/del`, `reply/report`, `relation/modify`) are sent **from the content script** (page context) on purpose: bilibili's gateway rejects extension-origin POSTs with HTTP 412 because they lack the page Referer/Origin. They therefore require a bilibili video tab to be open; the panel tells you when none is available.
 
 ## Limitations & risks
 
-- **Unofficial APIs.** `reply/del` and `relation/modify` are bilibili web endpoints without a public contract; they may change or trigger risk control. Operations are single-shot, confirmed, and throttled — never batch-automated.
-- **DOM drift.** Bilibili ships the comment area as web components and changes markup without notice. The probe tries renderer properties first, then attributes/anchors. If extraction fails, the comment is still hidden but delete/block may be disabled — run 诊断 and report the output.
-- **Login required** for delete/block; hiding works logged-out.
+- **Unofficial APIs.** `reply/del`, `reply/report`, and `relation/modify` are bilibili web endpoints without a public contract; they may change or trigger risk control. Operations are single-shot, confirmed, and throttled — never batch-automated.
+- **DOM drift.** Bilibili ships the comment area as web components and changes markup without notice. The probe tries renderer properties first, then attributes/anchors. If extraction fails, the comment is still hidden but delete/block/report may be disabled — run 诊断 and report the output.
+- **Login required** for delete/block/report; hiding works logged-out.
 - **Restore is session-scoped**: after a reload, matching comments are hidden again (by design; use whitelist for a permanent exception).
 
 ## Dev
@@ -71,21 +73,23 @@ Chrome/Edge (Manifest V3) 扩展：自动隐藏 B站视频页所有含 @提及 �
 
 ### 功能
 
-- **@提及过滤** — 任何含 @提及 的评论（根评论与楼中楼子回复均覆盖）就地隐藏：通过提及链接（`space.bilibili.com/<mid>`、文本以 @ 开头）识别，并以文本级 `@名字` 模式兜底（覆盖不暴露提及链接的渲染器版本）；评论区上方 chip 显示隐藏条数，点击打开侧边栏。关键词/正则规则仅作补充。
-- **暗色侧边栏**（`chrome.sidePanel`，Chrome/Edge 116+）— 默认暗色主题（页头 ☀️/🌙 切换）；面板重新聚焦或切回标签页时自动刷新，并通过 storage 事件实时更新。被隐藏评论按视频分组，支持恢复（本页会话）、白名单（永久）、删除、拉黑；已拉黑用户可在「历史」页取消拉黑（`x/relation/modify` act=6）。破坏性操作需二次点击确认，限速每次调用间隔 1.6s。
+- **@提及过滤** — 任何含 @提及 的**根评论**就地隐藏：通过提及链接（`space.bilibili.com/<mid>`、文本以 @ 开头）识别，并以文本级 `@名字` 模式兜底（覆盖不暴露提及链接的渲染器版本）；评论区上方 chip 显示隐藏条数，点击打开侧边栏。楼中楼回复一律豁免——「回复 @xx」前缀与回复中的手动 @ 都属正常对话，不会被 @ 过滤隐藏（关键词/正则/UID 规则对回复仍然生效）。
+- **暗色侧边栏**（`chrome.sidePanel`，Chrome/Edge 116+）— 默认暗色主题（页头 ☀️/🌙 切换）；面板重新聚焦或切回标签页时自动刷新，并通过 storage 事件实时更新。被隐藏评论按视频分组，支持恢复（本页会话）、白名单（永久）、删除、拉黑、举报；已拉黑用户可在「历史」页取消拉黑（`x/relation/modify` act=6）。拦截记录仅在本次浏览器运行内有效：每次启动自动清空未处理记录，已删除/已拉黑的历史保留。破坏性操作需二次点击确认，限速每次调用间隔 1.6s。
 - **UP主模式** — 自己的视频上提供**删除**（`x/v2/reply/del`，UP主权限由服务端校验）；他人视频上提供**拉黑**（`x/relation/modify`，act=5）。两种按钮在适用处均会显示。
-- **自定义规则**（可选）— 关键词（子串）与 JS 正则规则，附测试框。
+- **一键举报** — 通过 `x/v2/reply/report` 举报评论；理由可选（垃圾广告 / 刷屏 / 内容不相关，默认垃圾广告，设置中修改）；已举报过的评论会标记并不再重复举报。
+- **标注垃圾与 UID 导出** — 在卡片上「标垃圾」手动标注确认的垃圾评论，设置 → 导出垃圾 UID 一键复制其 mid 列表，可粘贴为 UID 规则让这些用户的评论全域隐藏。
+- **自定义规则**（可选）— 关键词（子串）、JS 正则、UID（mid 列表）规则，附测试框。
 - **自我豁免** — 你自己发的含@评论不会被隐藏（设置页开关）。
 - **诊断** — 设置 → 诊断当前标签页，报告探针状态、识别到的评论单元数及 rpid/mid 缺失情况，便于反馈问题。
 - **旧版 DOM 兜底** — 若B站 web components 评论区缺失，回退扫描经典 `.reply-item` DOM。
 
 ### 安装
 
-**从 release zip（推荐）：** 从 [Releases](https://github.com/AkiroMusic/bilibili-at-guard/releases) 页下载 `bilibili-at-guard-v0.1.4.zip` 并解压，然后：
+**从 release zip（推荐）：** 从 [Releases](https://github.com/AkiroMusic/bilibili-at-guard/releases) 页下载 `bilibili-at-guard-v0.1.7.zip` 并解压，然后：
 
 1. Chrome：`chrome://extensions` · Edge：`edge://extensions`
 2. 开启**开发者模式**
-3. **加载已解压的扩展程序** → 选择解压出的 `bilibili-at-guard-0.1.4/` 文件夹
+3. **加载已解压的扩展程序** → 选择解压出的 `bilibili-at-guard-0.1.7/` 文件夹
 4. 固定扩展；打开任意 `bilibili.com/video/BV…` 页面
 
 **从仓库目录：** 同样步骤，直接选择本仓库文件夹。
@@ -95,7 +99,7 @@ Chrome/Edge (Manifest V3) 扩展：自动隐藏 B站视频页所有含 @提及 �
 1. 内容脚本每 2 秒（及 DOM 变化时）穿透 open shadow roots 扫描评论区。
 2. 被隐藏评论折叠；评论区上方出现 chip（`🛡 At Guard · 已隐藏 N 条评论（含@） · 点击管理`）。
 3. 点击 chip（或工具栏图标）打开侧边栏。
-4. 每条评论：**恢复**对本页会话生效；**白名单**该用户评论永不隐藏；**删除**（自己的视频）/ **拉黑**（任意视频）通过B站 web API 操作，需确认步骤。
+4. 每条评论：**恢复**对本页会话生效；**白名单**该用户评论永不隐藏；**标垃圾**标记以便导出 UID；**删除**（自己的视频）/ **拉黑** / **举报**通过B站 web API 操作，需确认步骤。
 
 ### 工作原理
 
@@ -110,19 +114,19 @@ background/service-worker.js        bilibili GET API（nav/view）、bili_jct co
 sidepanel/                           管理界面、规则、白名单、诊断
 ```
 
-@提及判定：评论体内 `href` 指向 `space.bilibili.com/<mid>` 且文本以 @ 开头的链接，**或**评论文本中的 `@名字` 模式（覆盖不暴露提及链接的渲染器版本；误伤时可通过 恢复/白名单 找回）。评论单元通用匹配：任意 `BILI-COMMENT*` 自定义元素（排除回复容器、操作按钮、用户信息等辅助组件），外加经典 `.reply-item` DOM。根评论隐藏整张 thread 卡片；子回复仅隐藏渲染器自身。
+@提及判定（仅根评论，楼中楼一律豁免）：评论体内 `href` 指向 `space.bilibili.com/<mid>` 的链接——文本以 @ 开头，或链接指向的用户不是评论作者本人（部分渲染器会省略 @ 符号）——**或**评论文本中的 `@名字` 模式（覆盖不暴露提及链接的渲染器版本；误伤时可通过 恢复/白名单 找回）。回复的识别依据：回复数据 `root != 0`、祖先链上有回复容器、或经典 DOM 嵌套。评论单元通用匹配：任意 `BILI-COMMENT*` 自定义元素（排除回复容器、操作按钮、用户信息等辅助组件），外加经典 `.reply-item` DOM。根评论隐藏整张 thread 卡片；子回复仅隐藏渲染器自身。
 
 ### 权限与隐私
 
 - `storage` — 记录与设置保存在 `chrome.storage.local`；除下列B站 API 调用外，任何数据不离开本机。
-- `cookies` + `https://*.bilibili.com/*` — 读取 `bili_jct`（csrf），并为 `api.bilibili.com` 调用附带登录 Cookie：`x/web-interface/nav`（登录身份）、`x/web-interface/view`（视频 UP主/aid）、`x/v2/reply/del`、`x/relation/modify`。无其他主机、无统计埋点。
-- 写操作（`reply/del`、`relation/modify`）刻意**从内容脚本**（页面上下文）发出：B站网关会以 HTTP 412 拒绝扩展来源的 POST（缺少页面 Referer/Origin）。因此操作时需要有一个B站视频页处于打开状态；无可用页面时面板会提示。
+- `cookies` + `https://*.bilibili.com/*` — 读取 `bili_jct`（csrf），并为 `api.bilibili.com` 调用附带登录 Cookie：`x/web-interface/nav`（登录身份）、`x/web-interface/view`（视频 UP主/aid）、`x/v2/reply/del`、`x/v2/reply/report`、`x/relation/modify`。无其他主机、无统计埋点。
+- 写操作（`reply/del`、`reply/report`、`relation/modify`）刻意**从内容脚本**（页面上下文）发出：B站网关会以 HTTP 412 拒绝扩展来源的 POST（缺少页面 Referer/Origin）。因此操作时需要有一个B站视频页处于打开状态；无可用页面时面板会提示。
 
 ### 限制与风险
 
-- **非官方接口。** `reply/del` 与 `relation/modify` 为B站网页端端点，无公开契约，可能变更或触发风控。所有操作均为单次、需确认、有限速——绝不批量自动化。
-- **DOM 变动。** B站评论区为 web components 且可能随时改版。探针先读渲染器属性，再回退属性/链接解析。若提取失败，评论仍会隐藏，但删除/拉黑可能不可用——请运行诊断并反馈输出。
-- 删除/拉黑**需登录**；隐藏功能未登录也可用。
+- **非官方接口。** `reply/del`、`reply/report` 与 `relation/modify` 为B站网页端端点，无公开契约，可能变更或触发风控。所有操作均为单次、需确认、有限速——绝不批量自动化。
+- **DOM 变动。** B站评论区为 web components 且可能随时改版。探针先读渲染器属性，再回退属性/链接解析。若提取失败，评论仍会隐藏，但删除/拉黑/举报可能不可用——请运行诊断并反馈输出。
+- 删除/拉黑/举报**需登录**；隐藏功能未登录也可用。
 - **恢复仅本页会话有效**：刷新后匹配评论会再次隐藏（设计如此；永久例外请用白名单）。
 
 ### 开发

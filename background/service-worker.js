@@ -94,4 +94,24 @@
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
     // older Chromium without openPanelOnActionClick
   });
+
+  // Pending records only matter while the browsing run that captured them is
+  // alive: a video from a previous run is unlikely to be managed again, so on
+  // every browser start drop status='hidden' records and keep deleted/blocked
+  // history.
+  async function clearStalePending() {
+    const { records } = await chrome.storage.local.get('records');
+    if (!records) return;
+    const kept = {};
+    let dirty = false;
+    for (const [id, rec] of Object.entries(records)) {
+      if (rec && rec.status === 'hidden') dirty = true;
+      else kept[id] = rec;
+    }
+    if (dirty) await chrome.storage.local.set({ records: kept });
+  }
+
+  chrome.runtime.onStartup.addListener(() => {
+    clearStalePending().catch(() => {});
+  });
 })();
